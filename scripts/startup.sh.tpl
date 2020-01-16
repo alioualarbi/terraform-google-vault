@@ -11,11 +11,17 @@ fi
 # Data
 LOCAL_IP="$(curl -sf -H "Metadata-Flavor: Google" http://metadata/computeMetadata/v1/instance/network-interfaces/0/ip)"
 
+# Allow users to specify an HTTP proxy for egress instead of a NAT
+if [ ! -z '${custom_http_proxy}' ]; then
+  export http_proxy=${custom_http_proxy}
+  export https_proxy=$http_proxy
+fi
+
 # Deps
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -yqq
 apt-get upgrade -yqq
-apt-get install -yqq jq libcap2-bin logrotate netcat nginx unzip
+apt-get install -yqq jq libcap2-bin logrotate nginx unzip
 
 # Install Stackdriver for logging and monitoring
 curl -sSfL https://dl.google.com/cloudagents/install-logging-agent.sh | bash
@@ -44,6 +50,16 @@ chmod 0600 /etc/vault.d/config.hcl
 # Sub in local IP
 # $$ is correct here because we are in terraform template
 sed -i "s/LOCAL_IP/$${LOCAL_IP}/g" /etc/vault.d/config.hcl
+
+# Pull IP info from gcloud if an internal load balancer is
+# required to avoid terraform cycle errors.
+LB_IP=${lb_ip}
+if [ '${create_external_load_balancer}' == 'false' ]; then
+  rule='https://www.googleapis.com/compute/v1/projects/${project_id}/regions/${region}/forwardingRules/vault-internal'
+  LB_IP=$(gcloud compute forwarding-rules describe $rule --format json | jq -r .IPAddress)
+fi
+sed -i "s/LB_IP/$LB_IP/g" /etc/vault.d/config.hcl
+
 
 # Service environment
 cat <<"EOF" > /etc/vault.d/vault.env
