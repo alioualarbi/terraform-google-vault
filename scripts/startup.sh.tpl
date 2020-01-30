@@ -51,16 +51,6 @@ chmod 0600 /etc/vault.d/config.hcl
 # $$ is correct here because we are in terraform template
 sed -i "s/LOCAL_IP/$${LOCAL_IP}/g" /etc/vault.d/config.hcl
 
-# Pull IP info from gcloud if an internal load balancer is
-# required to avoid terraform cycle errors.
-LB_IP=${lb_ip}
-if [ '${create_external_load_balancer}' == 'false' ]; then
-  rule='https://www.googleapis.com/compute/v1/projects/${project_id}/regions/${region}/forwardingRules/vault-internal'
-  LB_IP=$(gcloud compute forwarding-rules describe $rule --format json | jq -r .IPAddress)
-fi
-sed -i "s/LB_IP/$LB_IP/g" /etc/vault.d/config.hcl
-
-
 # Service environment
 cat <<"EOF" > /etc/vault.d/vault.env
 VAULT_ARGS=${vault_args}

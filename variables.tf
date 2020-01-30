@@ -284,24 +284,37 @@ EOF
 
 }
 
-variable "http_proxy" {
-  type        = string
-  default     = ""
+variable "internal_lb_ip" {
+  type    = string
+  default = "10.127.13.37"
+
   description = <<EOF
-HTTP proxy for downloading agents and vault executable on startup. Only necessary if allow_public_egress is false.
-This is only used on the initial startup of the Vault cluster, not in regular usage. If you configure Vault to
-manage credentials for other services, default HTTP routes will be taken.
+If load_balancing_scheme is set to INTERNAL, this IP will be used as the forwarding rule IP
 EOF
 }
 
-variable "create_external_load_balancer" {
-  type        = bool
-  default     = true
+variable "http_proxy" {
+  type    = string
+  default = ""
+
   description = <<EOF
-If true, the forwarding rule will be of type EXTERNAL and a public IP will be created. Otherwise, the type will
-be INTERNAL and a random RFC 1918 private IP will be assigned
+HTTP proxy for downloading agents and vault executable on startup. Only necessary if allow_public_egress is false.
+This is only used on the first startup of the Vault cluster and will NOT set the global HTTP_PROXY environment variable.
+i.e. If you configure Vault to manage credentials for other services, default HTTP routes will be taken.
 EOF
 }
+
+variable "load_balancing_scheme" {
+  type    = string
+  default = "EXTERNAL"
+
+  description = <<EOF
+Options are INTERNAL or EXTERNAL.
+If "EXTERNAL", the forwarding rule will be of type EXTERNAL and a public IP will be created.
+If "INTERNAL", the type will be INTERNAL and a random RFC 1918 private IP will be assigned
+EOF
+}
+
 #
 #
 # SSH

@@ -20,7 +20,9 @@
 
 # Template for creating Vault nodes
 locals {
-  lb_ip = var.create_external_load_balancer ? google_compute_forwarding_rule.external[0].ip_address : google_compute_forwarding_rule.internal[0].ip_address
+  use_internal_lb = var.load_balancing_scheme == "INTERNAL"
+  use_external_lb = var.load_balancing_scheme == "EXTERNAL"
+
 }
 
 resource "google_compute_instance_template" "vault" {
@@ -72,7 +74,7 @@ resource "google_compute_instance_template" "vault" {
 ############################
 
 resource "google_compute_health_check" "vault_internal" {
-  count   = var.create_external_load_balancer ? 0 : 1
+  count   = local.use_internal_lb ? 1 : 0
   project = var.project_id
   name    = "vault-health-internal"
 
@@ -88,29 +90,32 @@ resource "google_compute_health_check" "vault_internal" {
   depends_on = [google_project_service.service]
 }
 
-resource "google_compute_region_backend_service" "vault" {
-  count         = var.create_external_load_balancer ? 0 : 1
+resource "google_compute_region_backend_service" "vault_internal" {
+  count         = local.use_internal_lb ? 1 : 0
   name          = "vault-backend-service"
-  region        = "${var.region}"
+  region        = var.region
   health_checks = ["${google_compute_health_check.vault_internal[0].self_link}"]
   backend {
-    group = "${google_compute_region_instance_group_manager.vault.instance_group}"
+    group = google_compute_region_instance_group_manager.vault.instance_group
   }
 }
 
 # Forward internal traffic to the backend service
-resource "google_compute_forwarding_rule" "internal" {
-  count   = var.create_external_load_balancer ? 0 : 1
-  project = var.project_id
+resource "google_compute_forwarding_rule" "vault_internal" {
+  provider = google-beta
+  count    = local.use_internal_lb ? 1 : 0
+  project  = var.project_id
 
   name                  = "vault-internal"
   region                = var.region
   ip_protocol           = "TCP"
-  load_balancing_scheme = "INTERNAL"
+  ip_address            = var.internal_lb_ip
+  load_balancing_scheme = var.load_balancing_scheme
   network_tier          = "PREMIUM"
+  allow_global_access   = true # BETA
+  subnetwork            = local.subnet
 
-  # If internal LB
-  backend_service = google_compute_region_backend_service.vault[0].self_link
+  backend_service = google_compute_region_backend_service.vault_internal[0].self_link
   ports           = [var.vault_port]
 
   depends_on = [google_project_service.service]
@@ -123,7 +128,7 @@ resource "google_compute_forwarding_rule" "internal" {
 # This legacy health check is required because the target pool requires an HTTP
 # health check.
 resource "google_compute_http_health_check" "vault" {
-  count   = var.create_external_load_balancer ? 1 : 0
+  count   = local.use_external_lb ? 1 : 0
   project = var.project_id
   name    = "vault-health-legacy"
 
@@ -138,7 +143,7 @@ resource "google_compute_http_health_check" "vault" {
 
 
 resource "google_compute_target_pool" "vault" {
-  count   = var.create_external_load_balancer ? 1 : 0
+  count   = local.use_external_lb ? 1 : 0
   project = var.project_id
 
   name   = "vault-tp"
@@ -151,14 +156,14 @@ resource "google_compute_target_pool" "vault" {
 
 # Forward external traffic to the target pool
 resource "google_compute_forwarding_rule" "external" {
-  count   = var.create_external_load_balancer ? 1 : 0
+  count   = local.use_external_lb ? 1 : 0
   project = var.project_id
 
   name                  = "vault-external"
   region                = var.region
   ip_address            = google_compute_address.vault[0].address
   ip_protocol           = "TCP"
-  load_balancing_scheme = "EXTERNAL"
+  load_balancing_scheme = var.load_balancing_scheme
   network_tier          = "PREMIUM"
 
   target     = google_compute_target_pool.vault[0].self_link
@@ -179,7 +184,7 @@ resource "google_compute_region_instance_group_manager" "vault" {
   base_instance_name = "vault-${var.region}"
   wait_for_instances = false
 
-  target_pools = var.create_external_load_balancer ? [google_compute_target_pool.vault[0].self_link] : []
+  target_pools = local.use_external_lb ? [google_compute_target_pool.vault[0].self_link] : []
 
   named_port {
     name = "vault-http"

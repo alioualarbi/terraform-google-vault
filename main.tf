@@ -16,6 +16,7 @@
 
 locals {
   vault_tls_bucket = var.vault_tls_bucket != "" ? var.vault_tls_bucket : local.storage_bucket_name
+  lb_ip            = local.use_external_lb ? google_compute_forwarding_rule.external[0].ip_address : var.internal_lb_ip
 }
 
 # Configure the Google provider, locking to the 2.0 series.
@@ -114,25 +115,21 @@ data "template_file" "vault-startup-script" {
   template = file("${path.module}/scripts/startup.sh.tpl")
 
   vars = {
-    config                        = data.template_file.vault-config.rendered
-    custom_http_proxy             = var.http_proxy
-    lb_ip                         = var.create_external_load_balancer ? google_compute_address.vault[0].address : ""
-    project_id                    = var.project_id
-    region                        = var.region
-    service_account_email         = google_service_account.vault-admin.email
-    vault_args                    = var.vault_args
-    vault_port                    = var.vault_port
-    vault_proxy_port              = var.vault_proxy_port
-    vault_version                 = var.vault_version
-    vault_tls_bucket              = local.vault_tls_bucket
-    vault_ca_cert_filename        = var.vault_ca_cert_filename
-    vault_tls_key_filename        = var.vault_tls_key_filename
-    vault_tls_cert_filename       = var.vault_tls_cert_filename
-    kms_project                   = var.project_id
-    kms_location                  = google_kms_key_ring.vault.location
-    kms_keyring                   = google_kms_key_ring.vault.name
-    kms_crypto_key                = google_kms_crypto_key.vault-init.name
-    create_external_load_balancer = var.create_external_load_balancer
+    config                  = data.template_file.vault-config.rendered
+    custom_http_proxy       = var.http_proxy
+    service_account_email   = google_service_account.vault-admin.email
+    vault_args              = var.vault_args
+    vault_port              = var.vault_port
+    vault_proxy_port        = var.vault_proxy_port
+    vault_version           = var.vault_version
+    vault_tls_bucket        = local.vault_tls_bucket
+    vault_ca_cert_filename  = var.vault_ca_cert_filename
+    vault_tls_key_filename  = var.vault_tls_key_filename
+    vault_tls_cert_filename = var.vault_tls_cert_filename
+    kms_project             = var.project_id
+    kms_location            = google_kms_key_ring.vault.location
+    kms_keyring             = google_kms_key_ring.vault.name
+    kms_crypto_key          = google_kms_crypto_key.vault-init.name
   }
 }
 
@@ -145,6 +142,7 @@ data "template_file" "vault-config" {
     kms_location                             = google_kms_key_ring.vault.location
     kms_keyring                              = google_kms_key_ring.vault.name
     kms_crypto_key                           = google_kms_crypto_key.vault-init.name
+    lb_ip                                    = local.lb_ip
     storage_bucket                           = google_storage_bucket.vault.name
     vault_log_level                          = var.vault_log_level
     vault_port                               = var.vault_port

@@ -92,7 +92,7 @@ resource "google_compute_subnetwork" "vault-subnet" {
 }
 
 resource "google_compute_address" "vault" {
-  count   = var.create_external_load_balancer ? 1 : 0
+  count   = local.use_external_lb ? 1 : 0
   project = var.project_id
 
   name   = "vault-lb"
